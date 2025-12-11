@@ -2,8 +2,8 @@ import os
 import streamlit as st
 from crewai import Agent, Task, Crew, Process
 from langchain_google_genai import ChatGoogleGenerativeAI
-from crewai_tools import SerperDevTool\nfrom crewai.tools import BaseTool
-from crewai.tools import BaseTool
+from crewai_tools import SerperDevTool # CORRECTION : Importation sur une ligne séparée
+from crewai.tools import BaseTool      # CORRECTION : Importation sur une ligne séparée
 from dotenv import load_dotenv
 from typing import Any, Type
 from pydantic import BaseModel, Field
@@ -12,13 +12,16 @@ from pydantic import BaseModel, Field
 # CONFIGURATION INITIALE ET SÉCURITÉ
 # ===================================================================================
 
-# Charger les variables d'environnement (pour GOOGLE_API_KEY)
+# Charger les variables d'environnement (pour GOOGLE_API_KEY et SERPER_API_KEY)
 load_dotenv()
 
-# Vérifier la présence de la clé API
+# Vérifier la présence des clés API requises
 if "GOOGLE_API_KEY" not in os.environ:
     st.error("Erreur : La variable d'environnement GOOGLE_API_KEY n'est pas configurée.")
     st.stop()
+    
+# Vérifier si la clé SERPER est présente pour activer l'outil de recherche
+serper_key_present = "SERPER_API_KEY" in os.environ
 
 # Configuration du LLM (Gemini)
 llm = ChatGoogleGenerativeAI(model="gemini-pro",
@@ -31,9 +34,15 @@ llm = ChatGoogleGenerativeAI(model="gemini-pro",
 # ===================================================================================
 
 # 1. Outil de Recherche Web (pour l'Expert Recherche)
-# Nous utilisons SerperDevTool comme exemple. L'utilisateur devra configurer SERPER_API_KEY.
-# Pour l'instant, nous le laissons désactivé pour ne pas bloquer le déploiement.
-# search_tool = SerperDevTool()
+if serper_key_present:
+    # L'outil est activé si la clé est présente
+    search_tool = SerperDevTool()
+    st.sidebar.success("✅ Outil de Recherche Web (Serper) Actif")
+else:
+    # L'outil est désactivé si la clé est absente
+    search_tool = None
+    st.sidebar.warning("❌ Outil de Recherche Web (Serper) Désactivé. Ajoutez SERPER_API_KEY pour l'activer.")
+
 
 # 2. Outil de Lecture de Méthodologie (RAG sur fichier local)
 class MethodologieInput(BaseModel):
@@ -50,7 +59,7 @@ class MethodologieReader(BaseTool):
             with open("methodologie.txt", "r", encoding="utf-8") as f:
                 methodologie_content = f.read()
         except FileNotFoundError:
-            return "Erreur: Le fichier methodologie.txt est introuvable."
+            return "Erreur: Le fichier methodologie.txt est introuvable. Veuillez le créer."
 
         # Utiliser le LLM pour extraire la réponse pertinente du contenu
         prompt = f"""
@@ -101,9 +110,9 @@ redacteur = Agent(
 )
 
 # L'Expert Recherche (Agent d'Information)
-# Nous le définissons ici, mais il ne sera utilisé que si le Chef d'Orchestre le décide.
-# Pour l'instant, il n'a pas d'outil de recherche actif pour éviter de bloquer le déploiement.
-# Il servira de placeholder pour la logique de décision.
+# JEU D'OUTILS DYNAMIQUE : L'outil de recherche n'est ajouté que s'il est disponible.
+recherche_tools = [search_tool] if search_tool else []
+
 expert_recherche = Agent(
     role='Expert en Recherche et Vérification de Faits',
     goal='Trouver des faits, statistiques ou exemples récents pour enrichir le contenu, uniquement si le Chef d\'Orchestre le demande.',
@@ -112,7 +121,7 @@ expert_recherche = Agent(
         "Je n'agis que sur ordre du Chef d'Orchestre."
     ),
     llm=llm,
-    tools=[], # Temporairement sans outil de recherche actif
+    tools=recherche_tools, # Utilise l'outil seulement si Serper_API_KEY est configurée
     verbose=True
 )
 
@@ -251,7 +260,10 @@ with st.sidebar:
                 crew = creer_crew(mission_autonome, plateforme)
                 
                 # Lancement de la Crew
-                resultat_final = crew.kickoff(inputs={'mission': mission_autonome, 'plateforme': plateforme})
+                # Les inputs ici ne sont pas utilisés car les tâches ont déjà la mission/plateforme dans leur description
+                # mais je les laisse en commentaire au cas où ils seraient requis par la logique interne de la tâche
+                # resultat_final = crew.kickoff(inputs={'mission': mission_autonome, 'plateforme': plateforme})
+                resultat_final = crew.kickoff()
                 
                 # Affichage du résultat final
                 st.session_state.messages.append({"role": "assistant", "content": f"**MISSION TERMINÉE !**\n\n{resultat_final}"})
@@ -281,4 +293,4 @@ if prompt := st.chat_input("Discutez avec MICAI (Mode Chat)..."):
 # NOTE IMPORTANTE POUR L'UTILISATEUR
 # ===================================================================================
 st.sidebar.markdown("---")
-st.sidebar.info("⚠️ **ACTION REQUISE :** Pour que MICAI fonctionne, vous devez ajouter votre clé API Gemini dans les Secrets de votre dépôt GitHub. Voir les instructions de l'agent.")
+st.sidebar.info("⚠️ **ACTION REQUISE :** Pour que l'agent de recherche soit actif, vous devez ajouter la clé **SERPER_API_KEY** en plus de votre clé **GOOGLE_API_KEY** dans vos variables d'environnement.")
