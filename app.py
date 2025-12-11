@@ -2,7 +2,7 @@ import os
 import streamlit as st
 from crewai import Agent, Task, Crew, Process
 from langchain_google_genai import ChatGoogleGenerativeAI
-from crewai_tools import SerperDevTool
+from crewai_tools import SerperDevTool\nfrom crewai.tools import BaseTool
 from crewai.tools import BaseTool
 from dotenv import load_dotenv
 from typing import Any, Type
